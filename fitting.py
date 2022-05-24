@@ -89,7 +89,7 @@ class SfM_Analysis:
         vert_idx = np.where(angels > math.tan(angel))
         vert_points = points[vert_idx]
 
-        sorted_vert_points = vert_points[vert_points[:, 1].argsort()[::-1]]     # sort by y-value
+        sorted_vert_points = vert_points[vert_points[:, 2].argsort()[::-1]]  # sort by z-value
         # sorted_vert_points = sorted_vert_points[0:int(np.floor(0.8 * len(sorted_vert_points))), :]
         # view part
         if vis:
@@ -213,8 +213,19 @@ if __name__ == "__main__":
             dot_product = np.dot(np.asarray([0, 1, 0]), road_plane_normal)
             normal_to_vert_angle = np.arccos(dot_product)
             angle = np.pi / 2 - normal_to_vert_angle
-            data_road = sfm_a_list[j].extract_points_by_normals("road", angle, vis=True)
-            data_road = data_road[data_road[:, 1] > -0.5]
+            data_road = sfm_a_list[j].extract_points_by_normals("road", angle, vis=False)
+            data_road = data_road[data_road[:, 1] > -1]
+            # plt.plot(data_road[:, 1])
+            pred = np.polyfit(range(len(data_road)), data_road[:, 1], 1)
+            # plt.plot(range(len(data_road)), data_road[:, 1], 'o')  # create scatter plot
+            # plt.plot(range(len(data_road)), pred[0]*range(len(data_road))+pred[1])  # add line of best fit
+            dist = np.zeros(len(data_road))
+            for t in range(len(data_road)):
+                dist[t] = abs(data_road[t, 1] - (pred[0]*t+pred[1]))
+            std_dist = np.std(dist)
+            inliers = dist < 3*std_dist
+            data_road = data_road[inliers]
+            vis_pc(data_road)
             c, normal = fit_plane_LTSQ(data_road)
             point = np.array([0.0, 0.0, c])
             d = -point.dot(normal)

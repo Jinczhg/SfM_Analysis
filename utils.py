@@ -105,17 +105,6 @@ def plot_fitted_plane(point_cloud, normal, d):
 
 
 def error_analysis(data, normal, d):
-    # # Error Analysis
-    # if Method == 2:
-    #     # Common road plane
-    #     normal = road_plane_normal
-    #     d = road_plane_d
-    # else:
-    #     c, normal = fit_plane_LTSQ(data_road)
-    #     point = np.array([0.0, 0.0, c])
-    #     d = -point.dot(normal)
-    #     plot_fitted_plane(data_road, normal, d)
-
     # point-to-plane error analysis
     dist = np.zeros(len(data))
     for t in range(len(data)):
