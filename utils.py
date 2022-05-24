@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 
 def align_point_clouds(moving_point_cloud, ref_point_cloud, moving_traj, ref_traj, transform_12, plot=False):
@@ -55,12 +56,12 @@ def signed_shortest_distance(x, y, z, normal, d):
 
 def road_points_from_traj(point_cloud, trajectory, ind_1, ind_2):
     condition_0 = (point_cloud[:, 2] > trajectory[ind_1, 2]) & (point_cloud[:, 2] < trajectory[ind_2, 2])
-    condition_1 = (point_cloud[:, 1] - np.median(trajectory[ind_1:ind_2, 1]) > 0) & (
-            point_cloud[:, 1] - np.median(trajectory[ind_1:ind_2 - 1, 1]) < 0.1)
-    condition_left_road = (np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] > 0.05) & (
-            np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] < 0.1)
-    condition_right_road = (point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) > 0.05) & (
-            point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) < 0.1)
+    condition_1 = (point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2, 1]) > 0.05) & (
+            point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2 - 1, 1]) < 0.1)
+    condition_left_road = (np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] > 0.1) & (
+            np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] < 0.2)
+    condition_right_road = (point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) > 0.1) & (
+            point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) < 0.2)
     left_road_points = point_cloud[condition_0 & condition_1 & condition_left_road]
     right_road_points = point_cloud[condition_0 & condition_1 & condition_right_road]
     return left_road_points, right_road_points
@@ -75,9 +76,11 @@ def vis_pc(point_cloud):
     opt = viewer.get_render_option()
     opt.show_coordinate_frame = True
     viewer.run()
+    viewer.destroy_window()
+    viewer.close()
 
 
-def plot_fitted_plane(point_cloud, normal, d):
+def plot_plane(point_cloud, normal, d):
     if point_cloud.shape[1] == 3:
         maxx = np.max(point_cloud[:, 0])
         maxy = np.max(point_cloud[:, 1])
