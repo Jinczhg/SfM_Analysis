@@ -74,18 +74,18 @@ class SfM_Analysis:
 
     def extract_points_by_normals(self, part="road", angel=np.pi / 2, vis=False):  # angel in degree
         pcd_view = self.pcd_view
-        pcd_view.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.5, max_nn=20))
+        pcd_view.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.25, max_nn=30))
         points = np.asarray(pcd_view.points)
         normals = np.asarray(pcd_view.normals)
         angels = np.zeros(len(normals))
         for i in range(len(normals)):
             if part == "road":
                 angels[i] = abs(normals[i, 1]) / (
-                    np.sqrt(normals[i, 0] ** 2 + normals[i, 2] ** 2 + np.finfo(float).eps))  # (0, -1, 0) is the road
+                    np.sqrt(normals[i, 0] * normals[i, 0] + normals[i, 2] * normals[i, 2] + np.finfo(float).eps))  # (0, 1, 0) is the road
             # elif part == "left_view":
-            #     angels[i] = -normals[i, 1] / (np.sqrt(normals[i, 0] ** 2 + normals[i, 2] ** 2 + np.finfo(float).eps))
+            #     angels[i] = -normals[i, 1] / (np.sqrt(normals[i, 0] * normals[i, 0] + normals[i, 2] * normals[i, 2] + np.finfo(float).eps))
             # else:   # right_view
-            #     angels[i] = -normals[i, 1] / (np.sqrt(normals[i, 0] ** 2 + normals[i, 2] ** 2 + np.finfo(float).eps))
+            #     angels[i] = -normals[i, 1] / (np.sqrt(normals[i, 0] * normals[i, 0] + normals[i, 2] * normals[i, 2] + np.finfo(float).eps))
         vert_idx = np.where(angels > math.tan(angel))
         vert_points = points[vert_idx]
 
@@ -136,22 +136,28 @@ if __name__ == "__main__":
             pc_list[0], pc_list[1], traj_list[0], traj_list[1] = align_point_clouds(pc_list[0], pc_list[1], traj_list[0], traj_list[1],
                                                                                     transform, plot=False)
 
-    # trim the traj_list
+    # trim the traj_list and sample the point cloud
     traj_list[0] = traj_list[0][int(0.15 * len(traj_list[0])): int(0.85 * len(traj_list[0])), :]
     traj_list[1] = traj_list[1][int(0.15 * len(traj_list[1])): int(0.85 * len(traj_list[1])), :]
+    np.random.seed(10)
+    sample_amount = int(0.8*min(len(pc_list[0]), len(pc_list[1])))
+    random_idx_ir = np.random.uniform(0, len(pc_list[0]), sample_amount).astype(int)   # sample by uniform distribution
+    random_idx_rgb = np.random.uniform(0, len(pc_list[1]), sample_amount).astype(int)
+    pc_list[0] = pc_list[0][random_idx_ir]
+    pc_list[1] = pc_list[1][random_idx_ir]
 
     # combine IR and RGB
     ir_rgb_trajectory = np.vstack([traj_list[0], traj_list[1]])
     ir_rgb_trajectory = ir_rgb_trajectory[ir_rgb_trajectory[:, 2].argsort()]  # descending order
-    # trajectory = trajectory[int(0.15 * len(trajectory)): int(0.85 * len(trajectory)), :]  # only using part of the trajectory
     ir_rgb_points = np.vstack([pc_list[0], pc_list[1]])
 
     # find a common "road plane" for both point clouds by calculating the cross product of trajectory vector and road vector
     # find sample points on the road to determine a vector across the road
 
-    # TODO: if the road plane is defined by all of the points (ir and rgb), then whichever has the dominated amount of the points will have more
-    #  weights on the plane definition. As a result, when we use this plane to evaluate the points, the dominant one will have less errors. The
-    #  road plane needs to be defined independently.
+    # If the road plane is defined by all the points (ir and rgb), then whichever has the dominated amount of the points will
+    #  have more weights on the plane definition. As a result, when we use this plane to evaluate the points, the dominant one will have
+    #  smaller errors. Ideally, the road plane should be defined independently. The alternative solution here is to sample same amount of
+    #  points from both point clouds.
     left_road_points_lst = []
     right_road_points_lst = []
     for percent in np.arange(0, 0.95, 0.05):
@@ -163,36 +169,17 @@ if __name__ == "__main__":
     left_road_points = np.vstack(left_road_points_lst)
     right_road_points = np.vstack(right_road_points_lst)
     road_points = np.vstack([left_road_points, right_road_points])
-    road_vec = np.mean(left_road_points, axis=0) - np.mean(right_road_points, axis=0)
-    # beginning of the trajectory
-    # begin_1 = int(np.floor(0.05 * len(ir_rgb_trajectory)))
-    # begin_2 = int(np.ceil(0.1 * len(ir_rgb_trajectory)))
-    # left_road_points_begin, right_road_points_begin = road_points_from_traj(ir_rgb_points, ir_rgb_trajectory, begin_1, begin_2)
-    # # middle of the trajectory
-    # mid_1 = int(np.floor(0.5 * len(ir_rgb_trajectory)))
-    # mid_2 = int(np.ceil(0.6 * len(ir_rgb_trajectory)))
-    # left_road_points_mid, right_road_points_mid = road_points_from_traj(ir_rgb_points, ir_rgb_trajectory, mid_1, mid_2)
-    # # end of the trajectory
-    # end_1 = int(np.floor(0.9 * len(ir_rgb_trajectory)))
-    # end_2 = len(ir_rgb_trajectory) - 1
-    # left_road_points_end, right_road_points_end = road_points_from_traj(ir_rgb_points, ir_rgb_trajectory, end_1, end_2)
-    # road_points = np.vstack(
-    #     [left_road_points_begin, right_road_points_begin, left_road_points_mid, right_road_points_mid, left_road_points_end,
-    #      right_road_points_end])
 
-    # road_vec = np.mean(
-    #     np.vstack([right_road_points_begin, right_road_points_mid, right_road_points_end]), axis=0) - np.mean(
-    #     np.vstack([left_road_points_begin, left_road_points_mid, left_road_points_end]), axis=0)
+    road_vec = np.mean(left_road_points, axis=0) - np.mean(right_road_points, axis=0)
     traj_vec = ir_rgb_trajectory[-1, :] - ir_rgb_trajectory[0, :]  # only using part of the trajectory
     # unnecessary to calculate the dot product?
-    traj_vec_norm = np.sqrt(sum(traj_vec * traj_vec))
-    proj_of_road_on_traj = (np.dot(road_vec, traj_vec) / traj_vec_norm * traj_vec_norm) * traj_vec
+    proj_of_road_on_traj = (np.dot(road_vec, traj_vec) / np.dot(traj_vec, traj_vec)) * traj_vec
     road_plane_normal = np.cross(traj_vec, road_vec - proj_of_road_on_traj)
-    road_plane_normal = road_plane_normal / np.linalg.norm(road_plane_normal)  # unit vector
-    road_plane_d = 0.12
+    road_plane_normal = abs(road_plane_normal) / np.linalg.norm(road_plane_normal)  # unit vector. normal points up.
+    road_plane_d = -0.125   # this number needs to be tweaked slightly every time we change the random seed
 
     # Debugging: visualize and verify the sampled points on the road
-    Debugging = True
+    Debugging = False
     if Debugging:
         vis_pc(np.vstack([road_points, ir_rgb_trajectory]))
         plot_plane(np.vstack([road_points, ir_rgb_trajectory]), road_plane_normal, road_plane_d)
@@ -222,7 +209,7 @@ if __name__ == "__main__":
         print("Entropy is = ", entropy)
 
         # Find the point cloud of the road
-        Method = 2
+        Method = 1
         normal = np.zeros(3)
         d = 0
         data_road = []
@@ -230,9 +217,10 @@ if __name__ == "__main__":
             # Method 0: from point normal
             dot_product = np.dot(np.asarray([0, 1, 0]), road_plane_normal)  # Y-up coordinate system
             normal_to_vert_angle = np.arccos(dot_product)
-            angle = np.pi / 2 - normal_to_vert_angle
+            tol = 5 / 180 * np.pi
+            angle = np.pi / 2 - normal_to_vert_angle - tol
             data_road = sfm_a_list[j].extract_points_by_normals("road", angle, vis=False)
-            data_road = data_road[data_road[:, 1] > -1]
+            data_road = data_road[data_road[:, 1] > np.mean(traj[:, 1])]  # road is higher in y-axis in current coordinate system
             # plt.plot(data_road[:, 1])
             pred = np.polyfit(range(len(data_road)), data_road[:, 1], 1)
             # plt.plot(range(len(data_road)), data_road[:, 1], 'o')  # create scatter plot
@@ -269,8 +257,7 @@ if __name__ == "__main__":
                 idx_2 = int(np.ceil((percent + 0.05) * len(traj)))
                 condition_0 = (data[:, 2] > traj[idx_1, 2]) & (data[:, 2] < traj[idx_2, 2])
                 condition_1 = (data[:, 1] - np.mean(traj[idx_1:idx_2, 1]) > 0.05) & (
-                        data[:, 1] - np.mean(
-                    traj[idx_1:idx_2, 1]) < 0.1)  # road is beneath the trajectory (road is on above in current coordinate system)
+                        data[:, 1] - np.mean(traj[idx_1:idx_2, 1]) < 0.15)  # road is higher in y-axis in current coordinate system
                 condition_3 = (np.min(traj[idx_1:idx_2, 0]) - data[:, 0] < 0.2) | (
                         data[:, 0] - np.max(traj[idx_1:idx_2, 0]) < 0.2)
                 filtered_road_points = data[condition_0 & condition_1 & condition_3]
@@ -279,12 +266,27 @@ if __name__ == "__main__":
             data_road = np.vstack(data_road)
             data_road = data_road[data_road[:, 2].argsort()]
 
-            if Method == 1:  # TODO: Trajectory fitting results is very uncertain here. Method 1 is not currently incorrect. Need to fix.
-                # Method 1: from the trajectory plane
+            if Method == 1:
+                # Method 1: fit a plane to road points
+                c, normal = fit_plane_LTSQ(data_road)
+                point = np.array([0.0, 0.0, c])
+                d = -point.dot(normal)
+            elif Method == 2:
+                # Method 2: use the common road plane of the two point clouds
+                # Method 2.1: manually define the road plane
+                # y_up = np.asarray([0, 1, 0])  # Y-up coordinate system
+                # proj_of_y_on_traj = (np.dot(y_up, traj_vec)/np.dot(traj_vec, traj_vec))*traj_vec
+                # normal = y_up - proj_of_y_on_traj
+                # normal = abs(normal) / np.linalg.norm(normal)
+                # Method 2.2: define the road plane from the equally sampled points to avoid bias from the amount-dominated point cloud
+                normal = road_plane_normal
+                d = road_plane_d
+            elif Method == 3:  # TODO: Trajectory fitting results is very uncertain here. Method 1 is not currently incorrect. Need to fix.
+                # Method 3: from the trajectory plane
                 c, normal = fit_plane_LTSQ(traj)
                 point = np.array([0.0, 0.0, c])
                 d_tj = -point.dot(normal)
-                d = d_tj  # road plane that is parallel to the trajectory plane
+                d = d_tj + 0.1  # road plane that is parallel to the trajectory plane
                 Debugging = True
                 if Debugging:
                     plot_plane(data_road, normal, d)
@@ -298,10 +300,6 @@ if __name__ == "__main__":
                     fig = plt.figure()
                     _, x, _ = plt.hist(dist, bins='auto', density=True)  # arguments are passed to np.histogram
                     plt.title("Total error is " + str(sum(abs(dist))))
-            elif Method == 2:
-                # Method 2: use the common road plane of the two point clouds
-                normal = road_plane_normal
-                d = road_plane_d
             else:
                 exit("Program stopped due to an invalid Method Number.")
 
