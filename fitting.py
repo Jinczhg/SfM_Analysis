@@ -176,7 +176,10 @@ if __name__ == "__main__":
     proj_of_road_on_traj = (np.dot(road_vec, traj_vec) / np.dot(traj_vec, traj_vec)) * traj_vec
     road_plane_normal = np.cross(traj_vec, road_vec - proj_of_road_on_traj)
     road_plane_normal = abs(road_plane_normal) / np.linalg.norm(road_plane_normal)  # unit vector. normal points up.
-    road_plane_d = -0.125   # this number needs to be tweaked slightly every time we change the random seed
+    # road_plane_d = -0.125   # this number needs to be tweaked slightly every time we change the random seed
+    road_points_mean = np.mean(road_points, axis=0)
+    road_plane_d = -np.dot(road_points_mean, road_plane_normal)
+    print("road_plane_d = ", road_plane_d)
 
     # Debugging: visualize and verify the sampled points on the road
     Debugging = False
@@ -209,7 +212,7 @@ if __name__ == "__main__":
         print("Entropy is = ", entropy)
 
         # Find the point cloud of the road
-        Method = 1
+        Method = 2
         normal = np.zeros(3)
         d = 0
         data_road = []
