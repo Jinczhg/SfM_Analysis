@@ -106,12 +106,27 @@ class SfM_Analysis:
 
 if __name__ == "__main__":
     PATH = 0
+    CORRECTION = 1
     if PATH == 0:
-        # straight
-        pcd_path = ['./straight/pcl_ir.pcd', './straight/pcl_rgb.pcd']
-        traj_path = ["./straight/result_ir.txt", "./straight/result_rgb.txt"]
-        transform = np.array([[0.99954171, -0.02426103, 0.01810422, 0.01280828], [0.02432169, 0.99969926, -0.00313785, 0.01528642],
-                              [-0.01802265, 0.00357674, 0.99983118, -0.45082403]])
+        if CORRECTION == 0:
+            # straight
+            pcd_path = ['./straight/pcl_ir.pcd', './straight/pcl_rgb.pcd']
+            traj_path = ["./straight/result_ir.txt", "./straight/result_rgb.txt"]
+            # ir_no_correction to RGB
+            transform = np.array([[0.99954171, -0.02426103, 0.01810422, 0.01280828], [0.02432169, 0.99969926, -0.00313785, 0.01528642],
+                                  [-0.01802265, 0.00357674, 0.99983118, -0.45082403]])
+        else:
+            # exp(-4)
+            # pcd_path = ['./straight/pcl_ir_cor.pcd', './straight/pcl_rgb.pcd']
+            # traj_path = ["./straight/result_ir_cor.txt", "./straight/result_rgb.txt"]
+            # transform = np.array([[0.99905534, -0.03945437, 0.01821471, 0.03675389], [0.03948436, 0.99921936, -0.00128964, 0.04781415],
+            #                       [-0.01814961, 0.00200761, 0.99983327, -1.52229004]])
+            # new correction strategy
+            pcd_path = ['./straight/pcl_ir_cor_new.pcd', './straight/pcl_rgb.pcd']
+            traj_path = ["./straight/result_ir_cor_new.txt", "./straight/result_rgb.txt"]
+            transform = np.array(
+                [[9.97685087e-01, -6.55698097e-02, 1.80296249e-02, 0.01485907], [6.55824064e-02, 9.97847151e-01, -1.07656541e-04, 0.01722558],
+                 [-1.79837508e-02, 1.28983351e-03, 9.99837447e-01, -0.65622172]])
     else:
         # first turn
         pcd_path = ['./first_turn/pcl_ir.pcd', './first_turn/pcl_rgb.pcd']
@@ -127,6 +142,7 @@ if __name__ == "__main__":
         sfm_a.read_point_cloud(pcd_path[i])
         # sfm_a.visualize_point_cloud(show_normals=False)
         point_cloud = sfm_a.points
+        print("Total amount of points = ", len(point_cloud))
         ir_rgb_trajectory = file_interface.read_tum_trajectory_file(traj_path[i])
         trajectory_pc = ir_rgb_trajectory.positions_xyz
         pc_list.append(point_cloud)
@@ -139,53 +155,78 @@ if __name__ == "__main__":
     # trim the traj_list and sample the point cloud
     traj_list[0] = traj_list[0][int(0.15 * len(traj_list[0])): int(0.85 * len(traj_list[0])), :]
     traj_list[1] = traj_list[1][int(0.15 * len(traj_list[1])): int(0.85 * len(traj_list[1])), :]
-    np.random.seed(10)
-    sample_amount = int(0.8*min(len(pc_list[0]), len(pc_list[1])))
-    random_idx_ir = np.random.uniform(0, len(pc_list[0]), sample_amount).astype(int)   # sample by uniform distribution
-    random_idx_rgb = np.random.uniform(0, len(pc_list[1]), sample_amount).astype(int)
-    pc_list[0] = pc_list[0][random_idx_ir]
-    pc_list[1] = pc_list[1][random_idx_ir]
 
     # combine IR and RGB
-    ir_rgb_trajectory = np.vstack([traj_list[0], traj_list[1]])
-    ir_rgb_trajectory = ir_rgb_trajectory[ir_rgb_trajectory[:, 2].argsort()]  # descending order
-    ir_rgb_points = np.vstack([pc_list[0], pc_list[1]])
+    # ir_rgb_trajectory = np.vstack([traj_list[0], traj_list[1]])
+    # ir_rgb_trajectory = ir_rgb_trajectory[ir_rgb_trajectory[:, 2].argsort()]  # descending order
+    # ir_rgb_points = np.vstack([pc_list[0], pc_list[1]])
 
     # find a common "road plane" for both point clouds by calculating the cross product of trajectory vector and road vector
     # find sample points on the road to determine a vector across the road
 
     # If the road plane is defined by all the points (ir and rgb), then whichever has the dominated amount of the points will
-    #  have more weights on the plane definition. As a result, when we use this plane to evaluate the points, the dominant one will have
+    #  have more influence on the plane definition. As a result, when we use this plane to evaluate the points, the dominant one will have
     #  smaller errors. Ideally, the road plane should be defined independently. The alternative solution here is to sample same amount of
     #  points from both point clouds.
-    left_road_points_lst = []
-    right_road_points_lst = []
-    for percent in np.arange(0, 0.95, 0.05):
-        idx_1 = int(np.floor(percent * len(ir_rgb_trajectory)))
-        idx_2 = int(np.ceil((percent + 0.05) * len(ir_rgb_trajectory)))
-        left_road_points, right_road_points = road_points_from_traj(ir_rgb_points, ir_rgb_trajectory, idx_1, idx_2)
-        left_road_points_lst.append(left_road_points)
-        right_road_points_lst.append(right_road_points)
+    left_road_points_lst = [[], []]
+    right_road_points_lst = [[], []]
+    for ii in range(len(pc_list)):
+        for percent in np.arange(0, 0.95, 0.05):
+            idx_1 = int(np.floor(percent * len(traj_list[ii])))
+            idx_2 = int(np.ceil((percent + 0.05) * len(traj_list[ii])))
+            left_road_points, right_road_points = road_points_from_traj(pc_list[ii], traj_list[ii], idx_1, idx_2)
+            left_road_points_lst[ii].append(left_road_points)
+            right_road_points_lst[ii].append(right_road_points)
+        left_road_points_lst[ii] = np.vstack(left_road_points_lst[ii])
+        right_road_points_lst[ii] = np.vstack(right_road_points_lst[ii])
+        print("Road points on the left is %d, on the right is %d" % (len(left_road_points_lst[ii]), len(right_road_points_lst[ii])))
+
+    np.random.seed(10)
+    sample_amount = int(0.8 * min(len(left_road_points_lst[0]), len(left_road_points_lst[1])))
+    random_idx_ir = np.random.uniform(0, len(left_road_points_lst[0]), sample_amount).astype(int)  # sample by uniform distribution
+    random_idx_rgb = np.random.uniform(0, len(left_road_points_lst[1]), sample_amount).astype(int)
+    left_road_points_lst[0] = left_road_points_lst[0][random_idx_ir]
+    left_road_points_lst[1] = left_road_points_lst[1][random_idx_rgb]
+    print("Sampled road points on the left is %d" % sample_amount)
+
+    sample_amount = int(0.8 * min(len(right_road_points_lst[0]), len(right_road_points_lst[1])))
+    random_idx_ir = np.random.uniform(0, len(right_road_points_lst[0]), sample_amount).astype(int)  # sample by uniform distribution
+    random_idx_rgb = np.random.uniform(0, len(right_road_points_lst[1]), sample_amount).astype(int)
+    right_road_points_lst[0] = right_road_points_lst[0][random_idx_ir]
+    right_road_points_lst[1] = right_road_points_lst[1][random_idx_rgb]
+    print("Sampled road points on the right is %d" % sample_amount)
+
     left_road_points = np.vstack(left_road_points_lst)
     right_road_points = np.vstack(right_road_points_lst)
     road_points = np.vstack([left_road_points, right_road_points])
 
     road_vec = np.mean(left_road_points, axis=0) - np.mean(right_road_points, axis=0)
-    traj_vec = ir_rgb_trajectory[-1, :] - ir_rgb_trajectory[0, :]  # only using part of the trajectory
+    road_vec = road_vec / np.linalg.norm(road_vec)
+    traj_vec = 0.5 * (((traj_list[0][-1, :] - traj_list[0][0, :]) / np.linalg.norm((traj_list[0][-1, :] - traj_list[0][0, :]))) +
+                      ((traj_list[1][-1, :] - traj_list[1][0, :]) / np.linalg.norm((traj_list[1][-1, :] - traj_list[1][0, :]))))
     # unnecessary to calculate the dot product?
     proj_of_road_on_traj = (np.dot(road_vec, traj_vec) / np.dot(traj_vec, traj_vec)) * traj_vec
+    Debugging = False
+    if Debugging:
+        origin = [0, 0, 0]
+        X, Y, Z = zip(origin, origin, origin)
+        U, V, W = zip(traj_vec, road_vec - proj_of_road_on_traj, road_vec)
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+        ax.quiver(X, Y, Z, U, V, W, color=['r', 'g', 'b'])
+        plt.show()
     road_plane_normal = np.cross(traj_vec, road_vec - proj_of_road_on_traj)
-    road_plane_normal = abs(road_plane_normal) / np.linalg.norm(road_plane_normal)  # unit vector. normal points up.
+    road_plane_normal = abs(road_plane_normal) / np.linalg.norm(road_plane_normal)  # unit vector. abs() makes sure that the normal points up.
     # road_plane_d = -0.125   # this number needs to be tweaked slightly every time we change the random seed
     road_points_mean = np.mean(road_points, axis=0)
     road_plane_d = -np.dot(road_points_mean, road_plane_normal)
     print("road_plane_d = ", road_plane_d)
 
     # Debugging: visualize and verify the sampled points on the road
-    Debugging = False
+    Debugging = True
     if Debugging:
-        vis_pc(np.vstack([road_points, ir_rgb_trajectory]))
-        plot_plane(np.vstack([road_points, ir_rgb_trajectory]), road_plane_normal, road_plane_d)
+        vis_pc(np.vstack([road_points, traj_list[0]]))
+        plot_plane(np.vstack([road_points, traj_list[0]]), road_plane_normal, road_plane_d)
 
         # point-to-plane distance
         dist = np.zeros(len(road_points))
@@ -197,6 +238,12 @@ if __name__ == "__main__":
         fig = plt.figure()
         _, x, _ = plt.hist(dist, bins='auto', density=True)  # arguments are passed to np.histogram
         plt.title("Total error is " + str(sum(abs(dist))))
+
+    sample_amount = int(0.8 * min(len(pc_list[0]), len(pc_list[1])))
+    random_idx_ir = np.random.uniform(0, len(pc_list[0]), sample_amount).astype(int)  # sample by uniform distribution
+    random_idx_rgb = np.random.uniform(0, len(pc_list[1]), sample_amount).astype(int)
+    pc_list[0] = pc_list[0][random_idx_ir]
+    pc_list[1] = pc_list[1][random_idx_rgb]
 
     for j in range(len(pc_list)):
         data = pc_list[j]
@@ -262,7 +309,7 @@ if __name__ == "__main__":
                 condition_1 = (data[:, 1] - np.mean(traj[idx_1:idx_2, 1]) > 0.05) & (
                         data[:, 1] - np.mean(traj[idx_1:idx_2, 1]) < 0.15)  # road is higher in y-axis in current coordinate system
                 condition_3 = (np.min(traj[idx_1:idx_2, 0]) - data[:, 0] < 0.2) | (
-                        data[:, 0] - np.max(traj[idx_1:idx_2, 0]) < 0.2)
+                        data[:, 0] - np.max(traj[idx_1:idx_2, 0]) < 0.15)   # driving on the right of the road. Road points are closer on the right.
                 filtered_road_points = data[condition_0 & condition_1 & condition_3]
                 data_road.append(filtered_road_points)
 
