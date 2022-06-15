@@ -60,8 +60,8 @@ def road_points_from_traj(point_cloud, trajectory, ind_1, ind_2):
             point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2 - 1, 1]) < 0.15)
     condition_left_road = (np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] > 0.15) & (
             np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] < 0.2)
-    condition_right_road = (point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) > 0.1) & (
-            point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) < 0.15)  # driving on the right of the road. Road points are closer on the right.
+    condition_right_road = (point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) > 0.05) & (
+            point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) < 0.1)  # driving on the right of the road. Road points are closer on the right.
     left_road_points = point_cloud[condition_0 & condition_1 & condition_left_road]
     right_road_points = point_cloud[condition_0 & condition_1 & condition_right_road]
     return left_road_points, right_road_points
