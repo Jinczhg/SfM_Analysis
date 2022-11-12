@@ -1,7 +1,13 @@
+import math
+
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
+from matplotlib import mlab
 from mpl_toolkits.mplot3d import Axes3D
+from scipy import stats
+from scipy.stats import norm
+import matplotlib.mlab as mlab
 
 
 def align_point_clouds(moving_point_cloud, ref_point_cloud, moving_traj, ref_traj, transform_12, plot=False):
@@ -54,14 +60,22 @@ def signed_shortest_distance(x, y, z, normal, d):
     return d / e
 
 
+def point_to_line_distance_3D(linePtsStart, linePtsEnd, pts):
+
+    x = linePtsEnd - linePtsStart
+    dist = np.linalg.norm(np.outer(np.dot(pts-linePtsEnd, x)/np.dot(x, x), x)+linePtsEnd-pts, axis=1)
+    return dist
+
+
 def road_points_from_traj(point_cloud, trajectory, ind_1, ind_2):
     condition_0 = (point_cloud[:, 2] > trajectory[ind_1, 2]) & (point_cloud[:, 2] < trajectory[ind_2, 2])
-    condition_1 = (point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2, 1]) > 0.05) & (
-            point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2 - 1, 1]) < 0.15)
-    condition_left_road = (np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] > 0.15) & (
-            np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] < 0.2)
-    condition_right_road = (point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) > 0.05) & (
-            point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) < 0.1)  # driving on the right of the road. Road points are closer on the right.
+    condition_1 = (point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2, 1]) > 0.035) & (
+            point_cloud[:, 1] - np.mean(trajectory[ind_1:ind_2, 1]) < 0.045)
+    condition_left_road = (np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] > 0.35) & (
+            np.min(trajectory[ind_1:ind_2, 0]) - point_cloud[:, 0] < 0.45)
+    condition_right_road = (point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) > 0.1) & (
+            point_cloud[:, 0] - np.max(trajectory[ind_1:ind_2, 0]) < 0.2)  # driving on the right of the road. Road points are closer on
+    # the right.
     left_road_points = point_cloud[condition_0 & condition_1 & condition_left_road]
     right_road_points = point_cloud[condition_0 & condition_1 & condition_right_road]
     return left_road_points, right_road_points
@@ -107,7 +121,7 @@ def plot_plane(point_cloud, normal, d):
         exit("Input point cloud is not a Nx3 array")
 
 
-def error_analysis(data, normal, d):
+def error_analysis(data, normal, d, plot=False):
     # point-to-plane error analysis
     dist = np.zeros(len(data))
     for t in range(len(data)):
@@ -116,14 +130,28 @@ def error_analysis(data, normal, d):
         z = data[t, 2]
         dist[t] = signed_shortest_distance(x, y, z, normal, d)
 
-    avg_dist = np.average(abs(dist))
-    print("Fitting Error Mean is", avg_dist)
+    #avg_dist = np.average(abs(dist))
+    MSE = np.square(dist).mean()
+    RMSE = math.sqrt(MSE)
+    print("Fitting RMSE is", RMSE)
     std_dist = np.std(abs(dist))
-    print("Fitting Error Std is", std_dist)
+    print("Fitting Std is", std_dist)
 
-    plt.figure()
-    _, x, _ = plt.hist(dist, bins='auto', density=True)  # arguments are passed to np.histogram
-    # density = stats.gaussian_kde(dist)
-    # plt.plot(x, density(x))
-    plt.title("Histogram with 'auto' bins")
-    plt.show()
+    if(plot):
+        plt.figure()
+        n, bins, patches = plt.hist(dist, bins='auto', density=True)  # arguments are passed to np.histogram
+        # density = stats.gaussian_kde(dist)
+        # plt.plot(bins, density(bins))
+        (mu, sigma) = norm.fit(dist)
+        # print("mu = " + str(mu) + "; sigma = " + str(sigma))
+        y = norm.pdf(bins, mu, sigma)
+        plt.plot(bins, y, 'r--', linewidth=2)
+        plt.xlabel('Point Distance from the Road Plane', fontdict={'fontsize': 15})
+        plt.ylabel('Probability Density', fontdict={'fontsize': 15})
+        plt.ylim(0, 40)
+        plt.xlim(-0.04, 0.04)
+        plt.title(r'$ \mu=%.3f,\ \sigma=%.3f$' % (mu, sigma), fontdict={'fontsize': 12})
+        plt.grid(True)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.show()
